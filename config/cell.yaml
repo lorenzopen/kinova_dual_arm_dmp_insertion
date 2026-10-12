@@ -47,7 +47,7 @@ left:
   # CALIBRATE: the URDF the controller runs (urdf_path of the launch). Its
   # end_effector_link carries the 2F-85's 0.925 kg: with a tri-pad there instead,
   # gravity compensation is off by the difference - use a copy with the tri-pad's mass
-  urdf_path: /home/lin/ros2_ws/src/kinova_controller_pkgs/kinova_control/urdfs/gen3_p2_F_only.urdf
+  urdf_path: /home/nvidia/ros2_ws/src/kinova_controller_pkgs/kinova_control/urdfs/gen3_p2_F_only.urdf
   target_topic: /left/target_pose
   joint_states_topic: /left/joint_states
   wrench_topic: /left/estimated_wrench   # from the joint torque sensors, not an F/T
@@ -63,7 +63,7 @@ left:
 right:
   base_frame: base_link
   ee_frame: end_effector_link
-  urdf_path: /home/lin/ros2_ws/src/kinova_controller_pkgs/kinova_control/urdfs/gen3_p2_F_only.urdf
+  urdf_path: /home/nvidia/ros2_ws/src/kinova_controller_pkgs/kinova_control/urdfs/gen3_p2_F_only.urdf
   target_topic: /right/target_pose
   joint_states_topic: /right/joint_states
   wrench_topic: /right/estimated_wrench
