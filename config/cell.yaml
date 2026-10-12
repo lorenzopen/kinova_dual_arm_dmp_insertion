@@ -16,6 +16,12 @@
 # ee_frame:=end_effector_link puts the impedance at the flange, as in the
 # simulated wrist; their default tool_frame is 0.15 m further out (the 2F-85 tip).
 
+# THE REAL PIECES ARE 100 mm CUBES, the routes were trained on 120 mm: every position
+# is scaled about the slot (PyBullet, 3 worlds: all still seat, real tri-pad included).
+# Build the board at this scale too: the route files' neighbours are scaled on load.
+scale: 0.8333333
+piece_mass: null          # [kg] CALIBRATE: weigh the real piece; null = trained mass x scale^3
+
 rate_hz: 100              # control loop and command stream [Hz]
 log_dir: logs
 max_reach: 0.902          # [m] Kinova Gen3 7-DoF reach, for `check` only

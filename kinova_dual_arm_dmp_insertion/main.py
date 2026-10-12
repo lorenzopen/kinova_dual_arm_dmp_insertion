@@ -83,7 +83,7 @@ def cmd_check(a, cfg):
     against the flange poses the simulated apparatus was commanded."""
     from .controller import Insertion
     from .dryrun import DryRun
-    r = Route(a.world, a.arm)
+    r = Route(a.world, a.arm, cfg.get('scale', 1.0), cfg.get('piece_mass'))
     b = DryRun(r, period=1.0 / cfg["rate_hz"])
     rows = []
 
@@ -97,7 +97,9 @@ def cmd_check(a, cfg):
           f"SOCP ok {ins.stats['socp_ok']}/{ins.stats['socp_ticks']}")
     # the route phase against the simulator's commanded flanges (same piece frame, same pacing)
     trace = r.path[:-5] + "_trace.npz"
-    if os.path.isfile(trace):
+    if r.scale != 1.0:
+        print(f"  (the PyBullet trace is at the trained size: path compared only at scale 1)")
+    elif os.path.isfile(trace):
         tr = np.load(trace)
         sim = tr["rows"][tr["phase"] == "route"]
         mine = np.array([x[:15] for x in rows if x[15] == "route"], float)
@@ -139,7 +141,7 @@ def stiffness_report(route, cfg):
 def cmd_insert(a, cfg):
     from .controller import Abort, Insertion
     from .ros_backend import RosBackend
-    r = Route(a.world, a.arm)
+    r = Route(a.world, a.arm, cfg.get('scale', 1.0), cfg.get('piece_mass'))
     if r.hand_wrench != "off" and not cfg.get("allow_hand_wrench", False):
         sys.exit("this route was trained with the hand wrench (hwd): set allow_hand_wrench: true "
                  "in the config once the F/T moments are verified")
