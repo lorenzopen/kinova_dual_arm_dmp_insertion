@@ -39,36 +39,33 @@ Commanding the full wrist wrench instead was measured worse (CLAUDE.md §9).
 
 ## Install (on the ROS PC: Ubuntu 24.04, ROS 2 Jazzy, Python 3.12)
 
+The robot PC is SHARED: nothing goes into the system Python, `~/.local` or the
+colleague's `~/ros2_ws`. A venv that SEES the system packages (rclpy, numpy
+1.26, scipy, pinocchio) and adds only cvxpy:
+
 ```
 source /opt/ros/jazzy/setup.bash
-sudo apt install python3-numpy python3-scipy python3-yaml ros-jazzy-tf2-ros
-# Ubuntu 24.04 blocks system pip (PEP 668). numpy MUST stay < 2: rclpy is built
-# against Jazzy's numpy 1.26, and cvxpy would otherwise pull numpy 2.
-pip install --user --break-system-packages "numpy<2" "cvxpy<1.7" clarabel
-# a workspace of its own: the PC is shared, never build inside someone else's
-mkdir -p ~/lorenzo_ws/src && cp -r <this folder> ~/lorenzo_ws/src/
-cd ~/lorenzo_ws && colcon build --packages-select kinova_dual_arm_dmp_insertion && source install/setup.bash
+python3 -m venv --system-site-packages ~/lorenzo_venv
+source ~/lorenzo_venv/bin/activate
+pip install "cvxpy<1.7" clarabel "numpy<2"     # numpy<2: keeps the system 1.26 rclpy is built on
+mkdir -p ~/lorenzo_ws/src && cd ~/lorenzo_ws/src && unzip ~/kinova_dual_arm_dmp_insertion.zip
+cd ~/lorenzo_ws/src/kinova_dual_arm_dmp_insertion
+python -m kinova_dual_arm_dmp_insertion.main check T_s7039m4
 ```
+
+Run it with `python -m kinova_dual_arm_dmp_insertion.main <list|check|insert>`
+from that folder, venv active (no colcon needed; `ros2 run` would use the
+system Python, not the venv).
 
 Verified on the simulation PC with Jazzy's versions (numpy 1.26.4, scipy 1.11.4,
 cvxpy 1.6.7, Python 3.12): `check` gives the same result as with numpy 2.
 
-Discovery: with `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` this node, the two arm
-drivers and their controllers must share the subnet and the `ROS_DOMAIN_ID`.
-Check that the topics in `config/cell.yaml` are visible before `insert`:
-`ros2 topic list`, `ros2 topic hz /left/ft_sensor/wrench`, `ros2 run tf2_ros
-tf2_echo left_base_link left_end_effector_link`.
-
-Timing: one SOCP solve takes ~25 ms and runs every 100 ms inside the 100 Hz
-loop, so that tick is late; the loop does not try to catch up (measured in the
-dry run: 138 solves in 3.8 s).
-
 ## Run
 
 ```
-ros2 run kinova_dual_arm_dmp_insertion list                       # the routes, with their PyBullet result
-ros2 run kinova_dual_arm_dmp_insertion check  L_s7040m6           # NO robot: dry run + reach + path vs PyBullet
-ros2 run kinova_dual_arm_dmp_insertion insert L_s7040m6 --config ~/cell.yaml
+python -m kinova_dual_arm_dmp_insertion.main list                # the routes, with their PyBullet result
+python -m kinova_dual_arm_dmp_insertion.main check  T_s7039m4    # NO robot: dry run + reach + cart_k
+python -m kinova_dual_arm_dmp_insertion.main insert T_s7039m4    # the lab stack must be running
 ```
 
 `insert` asks twice on the keyboard: when to present the piece between the
