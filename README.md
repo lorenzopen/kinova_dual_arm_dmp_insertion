@@ -9,7 +9,7 @@ no stand-up, no Dellacherie: the piece is presented by hand (or a fixture) above
 its slot and the shelf is built by hand from the exported board.
 
 A self-contained ROS 2 (ament_python) package: copy this folder into
-`~/ros2_ws/src/`. It needs numpy, scipy, cvxpy, pyyaml, rclpy, tf2_ros - no
+`~/lorenzo_ws/src/` (a workspace of its own: the robot PC is shared). It needs numpy, scipy, cvxpy, pyyaml, rclpy, tf2_ros - no
 PyBullet, no sympy, no Yang Lin's compiled worlds. The routes are data files.
 
 ## What the robot is sent, and what is read
@@ -45,8 +45,9 @@ sudo apt install python3-numpy python3-scipy python3-yaml ros-jazzy-tf2-ros
 # Ubuntu 24.04 blocks system pip (PEP 668). numpy MUST stay < 2: rclpy is built
 # against Jazzy's numpy 1.26, and cvxpy would otherwise pull numpy 2.
 pip install --user --break-system-packages "numpy<2" "cvxpy<1.7" clarabel
-mkdir -p ~/ros2_ws/src && cp -r <this folder> ~/ros2_ws/src/
-cd ~/ros2_ws && colcon build --packages-select kinova_dual_arm_dmp_insertion && source install/setup.bash
+# a workspace of its own: the PC is shared, never build inside someone else's
+mkdir -p ~/lorenzo_ws/src && cp -r <this folder> ~/lorenzo_ws/src/
+cd ~/lorenzo_ws && colcon build --packages-select kinova_dual_arm_dmp_insertion && source install/setup.bash
 ```
 
 Verified on the simulation PC with Jazzy's versions (numpy 1.26.4, scipy 1.11.4,
