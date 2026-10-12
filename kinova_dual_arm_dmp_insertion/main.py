@@ -110,6 +110,30 @@ def cmd_check(a, cfg):
                   f"max {1000 * np.max(dist):.1f} mm (the squeeze differs: no real contact here)")
     for line in reach_report(r, cfg, [x[:15] for x in rows]):
         print("  " + line)
+    for line in stiffness_report(r, cfg):
+        print("  " + line)
+
+
+def stiffness_report(route, cfg):
+    """The lab controller's cart_k is diagonal in the BASE axes and fixed at
+    launch: the torsional 40 Nm/rad goes on the base axis the push axis lies along."""
+    from .geometry import Frame
+    k = cfg["stiffness"]
+    out = []
+    a = route.axis / np.linalg.norm(route.axis)
+    for side, push in (("left", a), ("right", -a)):
+        f = Frame(cfg[side]["shelf_in_base"]["xyz"], cfg[side]["shelf_in_base"]["quat"])
+        d = f.R.apply(push)
+        i = int(np.argmax(np.abs(d)))
+        rot = [k["tilt"]] * 3
+        rot[i] = k["torsion"]
+        kk = [k["trans"]] * 3 + rot
+        line = (f"{side}: push axis in base_link {np.round(d, 3).tolist()} -> "
+                f"cart_k:='[{', '.join(f'{v:.1f}' for v in kk)}]'")
+        if abs(d[i]) < 0.95:
+            line += "  WARNING: not along a base axis, the diagonal stiffness cannot match the sim"
+        out.append(line)
+    return out
 
 
 def cmd_insert(a, cfg):
