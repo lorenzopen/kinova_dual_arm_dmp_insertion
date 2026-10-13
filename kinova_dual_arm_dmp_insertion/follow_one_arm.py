@@ -105,6 +105,8 @@ def main():
                     help="use the calibrated shelf_in_base of config/cell.yaml instead")
     ap.add_argument("--lift", type=float, default=0.0,
                     help="[m] run the whole path this much HIGHER (first tests in free air)")
+    ap.add_argument("--stop-error", type=float, default=STOP_ERROR,
+                    help="[m] stop if the flange is this far from its target (default 0.040)")
     ap.add_argument("--dry", action="store_true", help="no robot: print the plan, write the CSV")
     ap.add_argument("--config", default=None)
     a = ap.parse_args()
@@ -204,7 +206,7 @@ def main():
                 send(c, R)
                 p_meas, _ = flange_now()
                 err = float(np.linalg.norm(p_meas - c))
-                if err > STOP_ERROR:
+                if err > a.stop_error:
                     print(f"  STOP: the flange is {1000 * err:.0f} mm from its target")
                     send(*flange_now())             # stay where it is
                     return
