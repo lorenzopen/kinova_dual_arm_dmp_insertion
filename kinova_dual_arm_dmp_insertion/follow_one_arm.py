@@ -13,12 +13,12 @@ What it sends, in order (all slow, straight line + slerp between poses):
        between waypoints is kept, only slowed down)
     3. nothing more: the lab controller keeps the last target, the arm stays there
 
-WHERE: by default, with no shelf and no calibration, the path is put STRAIGHT
-IN FRONT of the arm: turned about z so the tool pushes along the base's +x (the
-flange looking forward), centred on y = 0, --forward metres ahead (default
-0.40, the path's mean), heights as in the shelf frame (+ --lift). Nothing goes
-to the sides. `--cell` uses the calibrated `shelf_in_base` of config/cell.yaml
-instead (the two-arm cell: the left arm then works at its +y side).
+WHERE: by default, with no shelf and no calibration, the imaginary shelf
+stands at the arm's LEFT: the path is turned about z so the tool pushes along
+the base's +y (the flange looking left), and it runs in an x-z plane in front
+of the base - mean x = --forward (default 0.40 m), y = --side (default
+0.20 m), heights as in the shelf frame (+ --lift). `--cell` uses the
+calibrated `shelf_in_base` of config/cell.yaml instead (the two-arm cell).
 
 The hand pose along the route is computed exactly as `controller.Insertion`
 does it: the two tools are frozen to the piece at the grasp pose, then follow
@@ -98,9 +98,11 @@ def main():
     ap.add_argument("--turn", type=float, default=TURN, help="[rad/s] to the start (default 0.05)")
     ap.add_argument("--duration", type=float, default=DURATION, help="[s] the route (default 40)")
     ap.add_argument("--forward", type=float, default=0.40,
-                    help="[m] how far in front of the base the path runs (default 0.40)")
+                    help="[m] base x of the path (its mean, default 0.40)")
+    ap.add_argument("--side", type=float, default=0.20,
+                    help="[m] base y of the path's plane, the shelf on the left (default 0.20)")
     ap.add_argument("--cell", action="store_true",
-                    help="use the calibrated shelf_in_base of config/cell.yaml, not the path in front")
+                    help="use the calibrated shelf_in_base of config/cell.yaml instead")
     ap.add_argument("--lift", type=float, default=0.0,
                     help="[m] run the whole path this much HIGHER (first tests in free air)")
     ap.add_argument("--dry", action="store_true", help="no robot: print the plan, write the CSV")
@@ -114,13 +116,13 @@ def main():
     p_shelf, q_shelf = hand_path(r, a.arm)
     p_shelf = p_shelf + np.array([0.0, 0.0, a.lift])
     if not a.cell:
-        # turn the path about z so the tool pushes along base +x, then centre it
+        # turn the path about z so the tool pushes along base +y, then place it
         d = q_shelf[0].apply([1.0, 0.0, 0.0])
-        turn = Rot.from_rotvec([0.0, 0.0, -np.arctan2(d[1], d[0])])
+        turn = Rot.from_rotvec([0.0, 0.0, 0.5 * np.pi - np.arctan2(d[1], d[0])])
         moved = turn.apply(p_shelf)
-        shift = np.array([a.forward - moved[:, 0].mean(), -moved[:, 1].mean(), 0.0])
+        shift = np.array([a.forward - moved[:, 0].mean(), a.side - moved[:, 1].mean(), 0.0])
         acfg = dict(acfg, shelf_in_base={"xyz": shift.tolist(), "quat": turn.as_quat().tolist()})
-        print(f"  in front of the arm (not calibrated): shelf_in_base xyz "
+        print(f"  shelf at the arm's left (not calibrated): shelf_in_base xyz "
               f"{np.round(shift, 4).tolist()}, turned {np.degrees(turn.magnitude()):.0f} deg about z")
     targets = [to_base(acfg, p, q) for p, q in zip(p_shelf, q_shelf)]
     pts = np.array([t[0] for t in targets])

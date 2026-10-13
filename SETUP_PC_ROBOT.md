@@ -85,12 +85,14 @@ python -m kinova_dual_arm_dmp_insertion.follow_one_arm F75_Tt1_s9007 --routes c1
 python -m kinova_dual_arm_dmp_insertion.follow_one_arm F75_Tt1_s9007 --routes c100_five_cut800 --arm left
 ```
 
-Cosa fa: dalla home va piano alla prima posa, poi la traiettoria in 40 s **dritta davanti**
-al braccio (x = 400 mm, y ~ 0, z da 800 a 250 mm sopra la base, flangia rivolta in avanti),
-poi **resta ferma lì**. Ctrl-C: si ferma dov'è. Se la flangia resta indietro più di 4 cm si
-ferma da solo. Solo pose: niente forze, niente SOCP.
+Cosa fa: lo scaffale immaginario è **alla sua sinistra**. Dalla home va piano alla prima
+posa (~40 s), poi la traiettoria in 40 s nel **piano xz** a y = 200 mm (x tra 360 e 415 mm,
+z da 800 a 250 mm sopra la base), **flangia rivolta verso +y** (a sinistra), poi **resta
+ferma lì**. Ctrl-C: si ferma dov'è. Se la flangia resta indietro più di 4 cm si ferma da
+solo. Solo pose: niente forze, niente SOCP.
 
-Opzioni: `--duration 60` più lento, `--forward 0.45` più avanti, `--lift 0.10` più in alto.
+Opzioni: `--duration 60` più lento, `--speed 0.005` avvicinamento più lento,
+`--forward 0.45` più avanti, `--side 0.25` più a sinistra, `--lift 0.10` più in alto.
 
 Per spegnere il braccio: Ctrl-C nel terminale 1.
 
