@@ -19,6 +19,17 @@ hand above its slot; the board is built by hand from the route file.
   two 3D-printed plastic plates, a central spring, a sponge face, triangle side
   70 mm (trained: three spheres, 52 mm side, circumradius 30 mm).
 
+## Routes trained AT the real size (night 2026-10-12 -> 13): `cubes100/`
+
+`routes/c100_narrow75/`, `c100_narrow75hs/` (the narrow75 worlds; hs = the DMP starts with the
+piece's lowest point at 700 mm, above a full 6 x 6 rack), `c100_five/`, `c100_five625/` (worlds that
+can be BUILT with the 20-cube kit: four pieces on the shelf, the fifth inserted, slot 75% / 62.5%).
+Trained in PyBullet at 100 mm with the 70 mm tri-pad until placed <= 10 mm and slip <= 16.7 mm. They
+carry `scale_applied: 0.8333`, so `cell.yaml: scale` stays 0.8333 (route.py applies only the rest).
+`main.py check <world> --arm c100_five` etc. Which ones are in, how to build each board, all the
+commands and values: `cubes100/README.md`, `cubes100/RESULTS.md`, `cubes100/results_<set>.md`,
+board drawings `cubes100/worlds/five/images/`.
+
 ## Where things are
 
 | what | where |

@@ -59,7 +59,13 @@ class Route:
         self.c = d["constants"]
         self.simulated = d.get("simulated", {})
         self.neighbours = d["neighbours"]
-        self.scale = s = float(scale)
+        self.scale = float(scale)
+        # a route trained AT the real size (routes/c100_*, `scale_applied` 0.8333) is
+        # already in 100 mm: only what is left of `scale` is applied (cell.yaml stays 0.8333)
+        s = self.scale / float(d.get("scale_applied", 1.0))
+        if abs(s - 1.0) < 1e-6:
+            s = 1.0
+        self.eff_scale = s                             # what was actually applied here
         if s != 1.0 or mass is not None:
             # about the shelf frame's origin (the corner of column 0 on the floor):
             # the whole board shrinks, the slot with it - as in the PyBullet test

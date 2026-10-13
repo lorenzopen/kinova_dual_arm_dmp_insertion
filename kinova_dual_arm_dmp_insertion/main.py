@@ -97,8 +97,8 @@ def cmd_check(a, cfg):
           f"SOCP ok {ins.stats['socp_ok']}/{ins.stats['socp_ticks']}")
     # the route phase against the simulator's commanded flanges (same piece frame, same pacing)
     trace = r.path[:-5] + "_trace.npz"
-    if r.scale != 1.0:
-        print(f"  (the PyBullet trace is at the trained size: path compared only at scale 1)")
+    if r.eff_scale != 1.0:
+        print(f"  (the PyBullet trace is at another size: path compared only when the route is not rescaled)")
     elif os.path.isfile(trace):
         tr = np.load(trace)
         sim = tr["rows"][tr["phase"] == "route"]
@@ -160,18 +160,24 @@ def cmd_insert(a, cfg):
         print(f"  log: {path}")
 
 
+ARMS = ("scalar", "hwd", "c100_narrow75", "c100_narrow75hs", "c100_five", "c100_five625", "c100_five_cut800", "c100_five_cut700")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=("list", "check", "insert"))
     ap.add_argument("world", nargs="?")
-    ap.add_argument("--arm", default="scalar", choices=("scalar", "hwd"),
+    ap.add_argument("--arm", default="scalar", choices=ARMS,
                     help="scalar: the squeeze alone (thesis design, 24/29 in PyBullet); "
-                         "hwd: + the internal hand wrench (25/29). A route runs only with the control it was trained with")
+                         "hwd: + the internal hand wrench (25/29). A route runs only with the control it was trained with. "
+                         "c100_*: routes TRAINED at the real size (100 mm cubes, 70 mm tri-pad, scalar squeeze; "
+                         "cubes100/README.md): c100_narrow75 the 29 narrow75 worlds, c100_five / c100_five625 the "
+                         "20-cube kit worlds at 75% / 62.5%")
     ap.add_argument("--config", default=None)
     a = ap.parse_args(argv if argv is not None else sys.argv[1:])
     if a.command == "list":
         from .route import Route as R
-        for arm in ("scalar", "hwd"):
+        for arm in ARMS:
             for w in available(arm):
                 print("  " + R(w, arm).summary())
         return
