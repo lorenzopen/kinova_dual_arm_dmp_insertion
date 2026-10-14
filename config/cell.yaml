@@ -37,8 +37,12 @@ stiffness:                # what the routes were trained against (lib/wrist.py)
 # THE REAL TOOL (Lorenzo, 2026-10-12): two printed plastic plates, a central
 # spring, a sponge face; triangle side 70 mm. CALIBRATE: measure and write here.
 tool:
-  pad_x: 0.020            # [m] tool origin (flange) to the sponge's back
-  pad_r: 0.010            # [m] sponge thickness
+  # Lorenzo, 2026-10-14: each tool sticks out 60 mm from its flange (the tip = the sponge
+  # face), a few tens of grams (no URDF mass needed: gen3_bare.urdf + the tare). Sponge
+  # 30-35 mm, the central spring stops it before it is fully pressed. Only the sum
+  # pad_x + pad_r places the face; the squeeze presses into the sponge from there.
+  pad_x: 0.030            # [m] tool origin (flange) to the sponge's back
+  pad_r: 0.030            # [m] sponge thickness
   r_tri: 0.0404           # [m] contact circle: 70 mm triangle side / sqrt(3) (the sim had 30 mm)
 
 left:

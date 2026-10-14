@@ -60,12 +60,13 @@ RATE = 100.0         # [Hz]    targets sent per second (the controller runs at 1
 STOP_ERROR = 0.040   # [m]     stop if the flange is this far from its target
 
 
-def hand_path(route, side):
+def hand_path(route, side, spread=0.0):
     """(positions, rotations) of THIS arm's tool, shelf frame: grasp pose, mouth,
-    route, slot - as controller.Insertion.freeze / drive compute it."""
+    route, slot - as controller.Insertion.freeze / drive compute it. `spread`
+    [m] moves the tool that much further from the piece (empty-hand tests)."""
     a = route.axis / np.linalg.norm(route.axis)          # LEFT pushes along +a
     sign = -1.0 if side == "left" else +1.0
-    reach = 0.5 * route.opening + GE.PAD_X + GE.PAD_R    # pads touching the faces
+    reach = 0.5 * route.opening + GE.PAD_X + GE.PAD_R + spread   # pads touching the faces
     hand0 = route.centre + sign * reach * a               # tool position at the grasp
     q0 = GE.quat_from_x(-sign * a)                        # tool x points AT the piece
     # the piece frame: grasp pose, then the route (its first point is the mouth), then the slot

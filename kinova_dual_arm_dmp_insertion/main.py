@@ -4,6 +4,12 @@
     ros2 run kinova_dual_arm_dmp_insertion check  L_s7040m6 [--arm scalar]   # no robot: dry run + reach
     ros2 run kinova_dual_arm_dmp_insertion insert L_s7040m6 [--arm scalar] [--config cell.yaml]
 
+The real pair without a shelf calibration (pair.py: left base at +0.60 m y of the
+right one, tools facing each other), the route 3 times slower than trained:
+
+    python -m kinova_dual_arm_dmp_insertion.main check  F75_Tt1_s9007 --arm c100_five_cut800 --sep 0.60
+    python -m kinova_dual_arm_dmp_insertion.main insert F75_Tt1_s9007 --arm c100_five_cut800 --sep 0.60 --slow 3
+
 `check` and `list` need no ROS at all (python -m kinova_dual_arm_dmp_insertion.main check ...).
 """
 import argparse
@@ -15,6 +21,7 @@ import time
 import numpy as np
 
 from . import geometry as GE
+from . import pair
 from .route import Route, available
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -78,19 +85,39 @@ def reach_report(route, cfg, rows):
     return out
 
 
+def placed(a, cfg, r):
+    """With --sep: the nominal pair (pair.py) instead of the calibrated shelf_in_base."""
+    if a.sep is None:
+        return cfg
+    cfg = pair.place(cfg, r, a.sep, a.forward, a.lift, a.shelf_x)
+    for line in pair.describe(cfg, r):
+        print("  " + line)
+    return cfg
+
+
+def slowed(ins, slow):
+    """The route, the seat and the approach `slow` times slower than trained
+    (quasi-static: the squeeze and the SOCP run on their own clocks)."""
+    ins.motion_speed /= slow
+    ins.turn_rate /= slow
+    ins.seat_speed /= slow
+    return ins
+
+
 def cmd_check(a, cfg):
     """Dry run: the whole sequence with no robot, then the commanded route
     against the flange poses the simulated apparatus was commanded."""
     from .controller import Insertion
     from .dryrun import DryRun
     r = Route(a.world, a.arm, cfg.get('scale', 1.0), cfg.get('piece_mass'))
+    cfg = placed(a, cfg, r)
     b = DryRun(r, period=1.0 / cfg["rate_hz"])
     rows = []
 
     class Keep:
         def row(self, ins, tL, qL, tR, qR):
             rows.append([ins.b.now(), *tL, *qL.as_quat(), *tR, *qR.as_quat(), ins.phase])
-    ins = Insertion(r, b, log=Keep(), confirm=lambda msg: print(f"  (dry run) {msg}"))
+    ins = slowed(Insertion(r, b, log=Keep(), confirm=lambda msg: print(f"  (dry run) {msg}")), a.slow)
     t0 = time.perf_counter()
     ins.run()
     print(f"  dry run: {b.now():.1f} s of motion, solved in {time.perf_counter() - t0:.1f} s; "
@@ -149,7 +176,7 @@ def cmd_insert(a, cfg):
     path = os.path.join(cfg["log_dir"], time.strftime(f"{r.world}_{a.arm}_%Y%m%d_%H%M%S.csv"))
     log = Log(path)
     b = RosBackend(cfg)
-    ins = Insertion(r, b, log=log, f_abort=cfg["f_abort"], track_abort=cfg["track_abort"])
+    ins = slowed(Insertion(r, b, log=log, f_abort=cfg["f_abort"], track_abort=cfg["track_abort"]), a.slow)
     try:
         ins.run()
     except (Abort, KeyboardInterrupt) as e:
@@ -174,6 +201,9 @@ def main(argv=None):
                          "cubes100/README.md): c100_narrow75 the 29 narrow75 worlds, c100_five / c100_five625 the "
                          "20-cube kit worlds at 75% / 62.5%")
     ap.add_argument("--config", default=None)
+    ap.add_argument("--slow", type=float, default=1.0,
+                    help="route, seat and turns this many times slower than trained (default 1)")
+    pair.add_args(ap)
     a = ap.parse_args(argv if argv is not None else sys.argv[1:])
     if a.command == "list":
         from .route import Route as R
