@@ -43,6 +43,8 @@ F_TOUCH = 2.0                   # [N] "in contact" (both hands summed)
 V_APP = 0.040                   # [m/s] approach
 TURN_FLOOR = 2.0                # [s] a turn never takes less
 SEAT_DROP, SEAT_SPEED = 0.060, 0.020   # seat by feel: at most 60 mm down at 20 mm/s
+PICKUP_N = 6.0                 # [N] per hand: the pickup squeeze on the REAL pieces (polystyrene),
+                                # capped below the route's derived_N (25 N); the route then asks 3-6 N
 # THE HAND WRENCH (hwd routes only, `internal-descent`): Wong et al. eq. 49-50 as an integrator
 GAIN_F, STEP_F, MAX_F = 1.0 / (4.0 * KP), 2e-4, 0.020
 GAIN_T, STEP_T, MAX_T = 1.0 / (4.0 * 40.0), 2e-3, 0.15
@@ -394,8 +396,9 @@ class Insertion:
         self.b.tare()                           # again, at the open pose, nothing touching
         self.approach()
         print(f"      approach: {self.normal_force():.1f} N measured")
-        self.squeeze(r.derived_N)
-        print(f"      squeeze: {self.normal_force():.1f} N measured, asked {2 * r.derived_N:.1f}")
+        pickup = min(r.derived_N, PICKUP_N)
+        self.squeeze(pickup)
+        print(f"      squeeze: {self.normal_force():.1f} N measured, asked {2 * pickup:.1f}")
         self.confirm("let go of the piece (open the fixture)")
         R0 = r.rots[0]
         self.freeze(r.grasp_c, R0)

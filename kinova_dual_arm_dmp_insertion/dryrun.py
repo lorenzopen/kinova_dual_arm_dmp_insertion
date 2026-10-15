@@ -11,6 +11,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation as Rot
 
 from . import geometry as GE
+from .controller import PICKUP_N
 
 G = 9.81
 
@@ -54,7 +55,7 @@ class DryRun:
             face = p + (GE.PAD_X + GE.PAD_R) * x
             plane = centre + sgn * 0.5 * self.r.opening * a
             n[side] = self.k_face * max(0.0, float((face - plane) @ x))
-        if not self.held and min(n.values()) > 0.5 * self.r.derived_N:
+        if not self.held and min(n.values()) > 0.5 * min(self.r.derived_N, PICKUP_N):
             self.held = True
             self.local = (qL.inv().apply(self.c - mid), qL.inv() * self.R)
         support = 0.0
