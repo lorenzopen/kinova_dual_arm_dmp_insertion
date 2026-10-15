@@ -53,8 +53,19 @@ nastro**, altrimenti scivolano alla prima spinta.
 
 ## Ogni sessione: 4 terminali
 
-**T1 - braccio destro** e **T2 - braccio sinistro**: i comandi della sezione E di
-[SETUP_PC_ROBOT.md](../SETUP_PC_ROBOT.md). Aspetta che entrambi siano in home e fermi.
+**T1 - braccio destro (.107)** (terminale normale, SENZA `env.sh`):
+
+```bash
+source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash && ros2 run kinova_control kinova_controller.py --ip 192.180.0.107 --ros-args -r __ns:=/right -p initial_mode:=cartesian -p home_on_start:=true -p ee_frame:=end_effector_link -p urdf_path:=$HOME/lorenzo/gen3_bare.urdf -p friction_enable:=true -p friction_urdf_path:=$HOME/lorenzo/gen3_bare.urdf -p kalman_enable:=true -p cart_k:='[600.0, 600.0, 600.0, 20.0, 20.0, 20.0]' -p cart_d:='[5.0, 5.0, 5.0, 1.0, 1.0, 1.0]'
+```
+
+**T2 - braccio sinistro (.200)** (terminale normale, SENZA `env.sh`):
+
+```bash
+source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash && ros2 run kinova_control kinova_controller.py --ip 192.180.0.200 --ros-args -r __ns:=/left -p initial_mode:=cartesian -p home_on_start:=true -p ee_frame:=end_effector_link -p urdf_path:=$HOME/lorenzo/gen3_bare.urdf -p friction_enable:=true -p friction_urdf_path:=$HOME/lorenzo/gen3_bare.urdf -p kalman_enable:=true -p cart_k:='[600.0, 600.0, 600.0, 20.0, 20.0, 20.0]' -p cart_d:='[5.0, 5.0, 5.0, 1.0, 1.0, 1.0]'
+```
+
+Aspetta che entrambi siano in home e fermi. Per spegnere un braccio: Ctrl-C nel suo terminale.
 
 **T3 - registra tutto, dall'inizio alla fine** (Ctrl-C per chiudere):
 
@@ -135,7 +146,21 @@ e.
 python -m kinova_dual_arm_dmp_insertion.main check $W --arm c100_five_cut800 --sep 0.60 --shelf-x 0.66 --slow 3
 ```
 
-f. (prima rilancia T1 e T2 col `cart_k` che stampa `check`, o sali per gradi da 600)
+f. Prima rilancia T1 e T2 con la rigidezza per cui la rotta è addestrata (quella che stampa
+`check`, `[1500, 1500, 1500, 8, 40, 8]`): Ctrl-C in T1 e T2, poi incolla questi. Se preferisci
+salire per gradi da 600, cambia solo i numeri di `cart_k`.
+
+T1 - destro (.107):
+```bash
+source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash && ros2 run kinova_control kinova_controller.py --ip 192.180.0.107 --ros-args -r __ns:=/right -p initial_mode:=cartesian -p home_on_start:=true -p ee_frame:=end_effector_link -p urdf_path:=$HOME/lorenzo/gen3_bare.urdf -p friction_enable:=true -p friction_urdf_path:=$HOME/lorenzo/gen3_bare.urdf -p kalman_enable:=true -p cart_k:='[1500.0, 1500.0, 1500.0, 8.0, 40.0, 8.0]' -p cart_d:='[5.0, 5.0, 5.0, 1.0, 1.0, 1.0]'
+```
+
+T2 - sinistro (.200):
+```bash
+source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash && ros2 run kinova_control kinova_controller.py --ip 192.180.0.200 --ros-args -r __ns:=/left -p initial_mode:=cartesian -p home_on_start:=true -p ee_frame:=end_effector_link -p urdf_path:=$HOME/lorenzo/gen3_bare.urdf -p friction_enable:=true -p friction_urdf_path:=$HOME/lorenzo/gen3_bare.urdf -p kalman_enable:=true -p cart_k:='[1500.0, 1500.0, 1500.0, 8.0, 40.0, 8.0]' -p cart_d:='[5.0, 5.0, 5.0, 1.0, 1.0, 1.0]'
+```
+
+Aspetta che siano tutti e due in home e fermi, poi in T4:
 ```bash
 python -m kinova_dual_arm_dmp_insertion.main insert $W --arm c100_five_cut800 --sep 0.60 --shelf-x 0.66 --slow 3
 ```

@@ -9,7 +9,8 @@ ONE clock, so the two can only drift apart as much as their impedances lag.
 
 What it sends, in order (all slow, straight line + slerp between poses):
     1. from where each flange is NOW to its grasp pose; both arrive together
-       (the slower of the two sets the time, at --speed / --turn)
+       (the slower of the two sets the time, at --speed / --turn); there both
+       hold and wait for [Enter] (put the piece between the tri-pads), unless --no-wait
     2. the grasp pose -> the mouth of the slot -> the learnt route -> the slot,
        stretched to last --duration seconds; the two arms share the waypoint
        times (waypoint k = the same piece pose for both)
@@ -97,6 +98,8 @@ def main():
                     help="use the calibrated shelf_in_base of config/cell.yaml instead of --sep/--forward")
     ap.add_argument("--stop-error", type=float, default=STOP_ERROR,
                     help="[m] stop both if a flange is this far from its target (default 0.040)")
+    ap.add_argument("--no-wait", action="store_true",
+                    help="run the route straight after reaching the grasp pose (no [Enter] there)")
     ap.add_argument("--dry", action="store_true", help="no robot: print the plan, write the CSV")
     ap.add_argument("--config", default=None)
     a = ap.parse_args()
@@ -236,6 +239,10 @@ def main():
     gap_err_max, forces = 0.0, {s: [] for s in SIDES}
     try:
         for name, tt, P in plans:
+            if name == "route" and not a.no_wait:
+                # both at the grasp pose: the lab controllers hold the last targets
+                input(f"  >>> both at the grasp pose, tool tips {1000 * a.gap:.0f} mm apart: put the "
+                      f"piece between the tri-pads. [Enter] to run the route, Ctrl-C to quit ")
             print(f"  {name} ...")
             t0 = time.monotonic()
             while True:
