@@ -317,6 +317,8 @@ sopra lo slot).
 
 | data | mondo | gradino | esito | placed [mm] | note |
 |---|---|---|---|---|---|
+| 16/10 12:11 | T `F75_Tt1_s9007` | f (insert) | **inserito**, nessun JAM | | cart_k 1000, linea di base wrench, jam_scale 1.8: `docs/runs/20261016_1211_F75_Tt1_s9007_riuscito` |
+| 16/10 13:33 | Z `F75_Zt1_s9012` | f (insert) | **mezzo successo**: entrata, pila mezza caduta | | linea di base della T (non della Z): `docs/runs/20261016_1333_F75_Zt1_s9012_mezzo_successo` |
 | | | | | | |
 
 Per copiarli sul tuo PC (da un terminale del tuo PC):
@@ -336,3 +338,77 @@ scp -r nvidia@<ip-pc-robot>:~/lorenzo/ws/src/kinova_dual_arm_dmp_insertion/logs 
   Se le punte non sono dove ti aspetti rispetto ai pezzi, correggi lì (o misura meglio con
   `calibrate_cell.py`).
 - Non c'è un controllo di collisione fra gli avambracci: per questo si passa dai gradini b-d.
+
+---
+
+## Sessione 2026-10-16: rigidezza 1000, log del wrench, insert
+
+Molle nuove più rigide: `jam_scale: 1.8` in `config/cell.yaml` (soglia del jam x 1.8).
+L'insert del 16/10 si era fermato per una "forza laterale" di 13-19 N che restava anche a mani
+vuote dopo il release: sembra errore della stima del wrench, uguale sui due bracci, che
+cresce scendendo sotto l'altezza del tare. Prima di altri insert, misuralo (passo 4).
+
+**1. T1 - braccio destro (.107), cart_k 1000** (terminale normale, SENZA `env.sh`):
+
+```bash
+source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash && ros2 run kinova_control kinova_controller.py --ip 192.180.0.107 --ros-args -r __ns:=/right -p initial_mode:=cartesian -p home_on_start:=true -p ee_frame:=end_effector_link -p urdf_path:=$HOME/lorenzo/gen3_bare.urdf -p friction_enable:=true -p friction_urdf_path:=$HOME/lorenzo/gen3_bare.urdf -p kalman_enable:=true -p cart_k:='[1000.0, 1000.0, 1000.0, 20.0, 20.0, 20.0]' -p cart_d:='[5.0, 5.0, 5.0, 1.0, 1.0, 1.0]'
+```
+
+**2. T2 - braccio sinistro (.200), cart_k 1000** (terminale normale, SENZA `env.sh`):
+
+```bash
+source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash && ros2 run kinova_control kinova_controller.py --ip 192.180.0.200 --ros-args -r __ns:=/left -p initial_mode:=cartesian -p home_on_start:=true -p ee_frame:=end_effector_link -p urdf_path:=$HOME/lorenzo/gen3_bare.urdf -p friction_enable:=true -p friction_urdf_path:=$HOME/lorenzo/gen3_bare.urdf -p kalman_enable:=true -p cart_k:='[1000.0, 1000.0, 1000.0, 20.0, 20.0, 20.0]' -p cart_d:='[5.0, 5.0, 5.0, 1.0, 1.0, 1.0]'
+```
+
+Aspetta che entrambi siano in home e fermi. (Stesso smorzamento relativo di 600: `cart_d`
+traslazionale ~6.5 invece di 5.)
+
+**3. T3 - registra tutto** (Ctrl-C per chiudere):
+
+```bash
+source ~/lorenzo/env.sh && mkdir -p ~/lorenzo/bags && cd ~/lorenzo/bags && ros2 bag record -e "/(left|right)/.*" -o sessione_$(date +%m%d_%H%M)
+```
+
+**4. T4 - log del wrench a mani vuote** (non comanda niente, legge e basta):
+
+```bash
+source ~/lorenzo/env.sh && cd "$LORENZO/ws/src/kinova_dual_arm_dmp_insertion" && python -m kinova_dual_arm_dmp_insertion.wrench_log --tare
+```
+
+Niente pezzo, niente che tocca. Porta i bracci a più altezze (a mano o col gradino b qui
+sotto, in un altro terminale) e a ogni posa scrivi un nome + Invio: `alto`, `medio`, `basso`
+(come la discesa dell'insert, flangia da ~0.80 a ~0.47 m). Ctrl-C: stampa per ogni nome la
+forza media in assi base di ogni braccio. A mani vuote dovrebbe stare vicino a 0 N: se in
+basso fa 5-8 N, è l'errore che ha fermato l'insert. Log in `logs/wrench_<ora>.csv`.
+
+**5. T5 - il movimento a vuoto mentre il log gira** (il gradino b: in aria, 200 mm sopra lo slot) (`source ~/lorenzo/env.sh && cd "$LORENZO/ws/src/kinova_dual_arm_dmp_insertion"`):
+
+```bash
+W=F75_Tt1_s9007 R=c100_five_cut800
+python -m kinova_dual_arm_dmp_insertion.follow_two_arms $W --routes $R --cell --gap 0.20
+```
+
+**6. T4 - l'insert, quando il wrench torna a posto o la soglia basta**:
+
+```bash
+W=F75_Tt1_s9007 R=c100_five_cut800
+python -m kinova_dual_arm_dmp_insertion.main insert $W --arm $R --slow 3
+```
+
+**7. La linea di base del wrench** (una volta per route, mani vuote, NIENTE pezzo). T4:
+
+```bash
+source ~/lorenzo/env.sh && cd "$LORENZO/ws/src/kinova_dual_arm_dmp_insertion" && python -m kinova_dual_arm_dmp_insertion.wrench_log --tare
+```
+
+T5, dopo il tare (bracci fermi in home):
+
+```bash
+source ~/lorenzo/env.sh && cd "$LORENZO/ws/src/kinova_dual_arm_dmp_insertion" && W=F75_Tt1_s9007 R=c100_five_cut800 && python -m kinova_dual_arm_dmp_insertion.follow_two_arms $W --routes $R --cell --gap 0.10
+```
+
+Finito il giro, Ctrl-C in T4 e scrivi il file in `config/cell.yaml`:
+`wrench_baseline: logs/wrench_<ora>.csv`. Da lì l'insert corregge la forza di ogni mano con
+la linea di base nella posa più vicina (entro 30 mm; fuori non corregge e lo stampa). Due giri a
+vuoto del 16/10 coincidono entro ~1 N; corretto, l'errore a vuoto scende da 8 a ~2 N (95%).
+Una linea di base vale per quella route e quella rigidezza: se cambi `cart_k` o mondo, rifalla.

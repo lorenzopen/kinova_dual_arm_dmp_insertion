@@ -1,0 +1,91 @@
+# The robot cell, for the lab's stack `kinova_controller_pkgs` (ROS 2 Jazzy).
+# EVERY value marked CALIBRATE must be measured on the real cell before `insert`.
+#
+# THE SHELF FRAME: origin on the shelf floor at the left edge of column 0 (the
+# simulator's world), z up, the shelf plane is x-z, the LEFT arm stands at -y,
+# the RIGHT arm at +y. The shelf has no front and no back panel: one tool
+# reaches the piece from each side.
+#
+# THE ARMS RUN THE LAB'S CONTROLLER, unmodified, in another terminal:
+#   ros2 launch kinova_control dual_cartesian.launch.py \
+#       ee_frame:=end_effector_link \
+#       cart_k:='[1500.0, 1500.0, 1500.0, KRX, KRY, KRZ]'
+# `check` prints KRX KRY KRZ for this cell: their stiffness is diagonal in the
+# BASE axes (Pinocchio LOCAL_WORLD_ALIGNED) and fixed at launch, so the 40 Nm/rad
+# goes on the base axis the push axis lies along and 8 Nm/rad on the other two.
+# ee_frame:=end_effector_link puts the impedance at the flange, as in the
+# simulated wrist; their default tool_frame is 0.15 m further out (the 2F-85 tip).
+
+# THE REAL PIECES ARE 100 mm CUBES, the routes were trained on 120 mm: every position
+# is scaled about the slot (PyBullet, 3 worlds: all still seat, real tri-pad included).
+# Build the board at this scale too: the route files' neighbours are scaled on load.
+scale: 0.8333333
+piece_mass: null          # [kg] CALIBRATE: weigh the real piece; null = trained mass x scale^3
+
+rate_hz: 100              # control loop and command stream [Hz]
+log_dir: logs
+max_reach: 0.902          # [m] Kinova Gen3 7-DoF reach, for `check` only
+f_abort: 60.0             # [N] per hand: stop streaming above this (robot-only safety)
+track_abort: 0.040        # [m] stop if a flange is this far from its target beyond F / KP
+jam_scale: 1.8            # x the jam sentry's side-force limit (1.0 = as trained). Lorenzo,
+                          # 2026-10-16: stiffer springs, the piece must push its neighbours
+allow_hand_wrench: false  # hwd routes chase wrench MOMENTS: enable only once they are verified
+# empty-handed `wrench_log` CSV along the route (follow_two_arms --gap 0.10, no piece):
+# each hand's force is corrected by it at the nearest flange position (ros_backend.py).
+# null = no correction. 2026-10-16: the estimate is off up to 8-9 N per arm, repeatably.
+wrench_baseline: logs/wrench_20261016_112659.csv   # F75_Tt1_s9007 c100_five_cut800, gap 0.10, cart_k 1000
+
+stiffness:                # what the routes were trained against (lib/wrist.py)
+  trans: 1500.0           # [N/m]
+  torsion: 40.0           # [Nm/rad] about the push axis
+  tilt: 8.0               # [Nm/rad] the other two (the sim used 3 while approaching)
+
+# THE REAL TOOL (Lorenzo, 2026-10-12): two printed plastic plates, a central
+# spring, a sponge face; triangle side 70 mm. CALIBRATE: measure and write here.
+tool:
+  # Lorenzo, 2026-10-16: each tool sticks out 70 mm from its flange (the tip = the sponge
+  # face), a few tens of grams (no URDF mass needed: gen3_bare.urdf + the tare). Sponge
+  # 30-35 mm, the central spring stops it before it is fully pressed. Only the sum
+  # pad_x + pad_r places the face; the squeeze presses into the sponge from there.
+  pad_x: 0.040            # [m] tool origin (flange) to the sponge's back
+  pad_r: 0.030            # [m] sponge thickness
+  r_tri: 0.0404           # [m] contact circle: 70 mm triangle side / sqrt(3) (the sim had 30 mm)
+
+left:
+  base_frame: base_link
+  ee_frame: end_effector_link            # must match the launch's ee_frame
+  # CALIBRATE: the URDF the controller runs (urdf_path of the launch). Its
+  # end_effector_link carries the 2F-85's 0.925 kg: with a tri-pad there instead,
+  # gravity compensation is off by the difference - use a copy with the tri-pad's mass
+  urdf_path: /home/nvidia/ros2_ws/src/kinova_controller_pkgs/kinova_control/urdfs/gen3_p2_F_only.urdf
+  target_topic: /left/target_pose
+  joint_states_topic: /left/joint_states
+  wrench_topic: /left/estimated_wrench   # from the joint torque sensors, not an F/T
+  wrench_source: estimated               # or `ft` for a real wrist sensor (frame from TF)
+  zero_wrench_service: /left/zero_wrench
+  shoulder_in_base: [0.0, 0.0, 0.2848]
+  # the pose of the SHELF frame in this arm's base_link, measured by hand (Lorenzo,
+  # 2026-10-15, see `right`): from .200 the near floor corner is at x 175, y -240,
+  # z -30 mm; the shelf is 125 mm deep, so its centre plane is at y -302.5
+  shelf_in_base: {xyz: [0.8075, -0.3025, -0.03], quat: [0.0, 0.0, 1.0, 0.0]}
+  # our tool frame (x = push direction, origin at the flange centre) in end_effector_link:
+  # x_tool = z_ee, a -90 deg turn about y. Add the mount thickness along z_ee if any.
+  tool_in_ee: {xyz: [0.0, 0.0, 0.0], quat: [0.0, -0.7071068, 0.0, 0.7071068]}
+
+right:
+  base_frame: base_link
+  ee_frame: end_effector_link
+  urdf_path: /home/nvidia/ros2_ws/src/kinova_controller_pkgs/kinova_control/urdfs/gen3_p2_F_only.urdf
+  target_topic: /right/target_pose
+  joint_states_topic: /right/joint_states
+  wrench_topic: /right/estimated_wrench
+  wrench_source: estimated
+  zero_wrench_service: /right/zero_wrench
+  shoulder_in_base: [0.0, 0.0, 0.2848]
+  # measured by hand (Lorenzo, 2026-10-15): bases parallel, 600 mm apart; the shelf floor
+  # runs from x 175 to 825 mm in front of both bases, 30 mm below them; from .107 its near
+  # floor corner is at y +235, so with a 125 mm deep shelf the centre plane is at y +297.5.
+  # The 650 mm floor holds the simulated 646 mm between the end walls, centred on x 500:
+  # column 0 (the shelf origin) is the FAR end, x 807.5, turned 180 deg about z.
+  shelf_in_base: {xyz: [0.8075, 0.2975, -0.03], quat: [0.0, 0.0, 1.0, 0.0]}
+  tool_in_ee: {xyz: [0.0, 0.0, 0.0], quat: [0.0, -0.7071068, 0.0, 0.7071068]}

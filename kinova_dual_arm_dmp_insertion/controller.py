@@ -57,7 +57,7 @@ class Abort(RuntimeError):
 
 class Insertion:
     def __init__(self, route, backend, log=None, f_abort=60.0, track_abort=0.040,
-                 confirm=None):
+                 confirm=None, jam_scale=1.0):
         self.r, self.b = route, backend
         c = route.c
         self.mu = float(c["mu_eff"])                  # 1.0 for narrow75 (pad-piece rubber)
@@ -74,6 +74,7 @@ class Insertion:
                               f_pad_max=float(c["f_pad_max"]), f_min=1.0, r_s=0.10, r_char=0.05)
         self.log = log
         self.f_abort, self.track_abort = float(f_abort), float(track_abort)   # robot-only safety
+        self.jam_scale = float(jam_scale)                                     # robot: looser sentry
         self.confirm = confirm or (lambda msg: input(f"\n  >>> {msg} [Enter] "))
         # the open pose (Hands.__init__): LEFT pushes along +axis
         a = route.axis / np.linalg.norm(route.axis)
@@ -212,7 +213,7 @@ class Insertion:
         f = self.target if self.target else self.r.derived_N
         spare = 2.0 * self.mu * max(float(f), 1.0) - self.r.mass * G
         share = self.jam_share if (self.w_ext is not None or not self.seat_stops) else 1.0
-        return max(share * spare, 2.0)
+        return max(self.jam_scale * share * spare, 2.0)
 
     def watch_jam(self):
         meas = self.external_force()

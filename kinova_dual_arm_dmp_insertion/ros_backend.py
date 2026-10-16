@@ -17,12 +17,20 @@ low-level API, gravity compensated from the URDF. From it this node uses:
                                           axes, about the ee_frame origin
     /<ns>/zero_wrench       Trigger       tare (arm still, nothing touching)
 
-That stack publishes no TF, hence the forward kinematics here. A real wrist F/T
+That stack publishes no TF, hence the forward kinematics here.
+
+The estimate is off by up to 8-9 N per arm away from the pose of the tare, the same
+on every pass along the same path (2026-10-16: two empty runs agree within ~1 N).
+`wrench_baseline:` in cell.yaml names an empty-handed `wrench_log` CSV recorded along
+the route: each hand's force is then corrected by the baseline at the nearest flange
+position, minus the baseline where the tare was made. Forces only, not moments. A real wrist F/T
 sensor (`wrench_source: ft`, frame read from TF) is kept as the other option.
 
 Everything inside the controller is in the SHELF frame; this file is the only
 place that knows where the two robot bases are.
 """
+import csv
+import os
 import threading
 import time
 
@@ -74,6 +82,37 @@ class _FK:
         return np.array(M.translation), Rot.from_matrix(np.array(M.rotation))
 
 
+class _Baseline:
+    """Empty-handed wrench vs flange position, one arm, from a `wrench_log` CSV:
+    the base-axes force of the K samples nearest to a position, if within RADIUS."""
+    K, RADIUS = 25, 0.03
+
+    def __init__(self, path, side):
+        from scipy.spatial import cKDTree
+        with open(path, newline="") as fh:
+            rows = [r for r in csv.DictReader(fh) if r["arm"] == side]
+        if any(r["mark"] != "start" for r in rows):
+            rows = [r for r in rows if r["mark"] != "start"]     # only after the tare
+        if len(rows) < self.K:
+            raise ValueError(f"{path}: only {len(rows)} samples for arm {side}")
+        self.P = np.array([[float(r[k]) for k in ("px", "py", "pz")] for r in rows])
+        self.F = np.array([[float(r[k]) for k in ("Fbx", "Fby", "Fbz")] for r in rows])
+        self.tree = cKDTree(self.P)
+
+    def force(self, p):
+        """Base-axes force at flange position `p` (base frame), or None if too far."""
+        d, i = self.tree.query(np.asarray(p, float), k=self.K)
+        if d[0] > self.RADIUS:
+            return None
+        return self.F[i].mean(0)
+
+
+def _resolve(path):
+    if os.path.isabs(path) or os.path.isfile(path):
+        return path
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path)
+
+
 class _Arm:
     def __init__(self, node, name, cfg):
         self.name, self.cfg = name, cfg
@@ -94,6 +133,8 @@ class _Arm:
         self.m_tool = float(cfg.get("tool_mass", 0.0))
         self.c_tool = np.asarray(cfg.get("tool_com_in_ft", [0.0, 0.0, 0.0]), float)
         self.sign = float(cfg.get("ft_sign", 1.0))
+        self.baseline, self.b0 = None, np.zeros(3)
+        self.ticks = self.misses = 0
 
     def _joints(self, msg):
         self.joints = msg
@@ -109,6 +150,13 @@ class RosBackend(Node):
         self.cfg = cfg
         self.period = 1.0 / float(cfg["rate_hz"])
         self.arms = {"L": _Arm(self, "left", cfg["left"]), "R": _Arm(self, "right", cfg["right"])}
+        if cfg.get("wrench_baseline"):
+            path = _resolve(cfg["wrench_baseline"])
+            for side, arm in self.arms.items():
+                arm.baseline = _Baseline(path, side)
+                z = arm.baseline.P[:, 2]
+                print(f"  wrench baseline {arm.name}: {len(z)} samples, flange z {z.min():.2f}..{z.max():.2f} m"
+                      f" (base), from {path}")
         if any(a.source == "ft" for a in self.arms.values()):
             from tf2_ros import Buffer, TransformListener
             self.tf = Buffer()
@@ -178,6 +226,12 @@ class RosBackend(Node):
                     time.sleep(0.4)          # it averages 50 samples (~200 ms)
                 else:
                     self.get_logger().warn(f"{arm.name}: no zero_wrench service, not tared")
+                if arm.baseline is not None:
+                    b0 = arm.baseline.force(self._ee_pose(arm)[0])
+                    if b0 is None:
+                        self.get_logger().warn(f"{arm.name}: tare pose off the wrench baseline, "
+                                               f"correction relative to its own tare")
+                    arm.b0 = np.zeros(3) if b0 is None else b0
             else:
                 f, t, _ps, qs = self._ft_raw(arm)
                 g = arm.m_tool * G_WORLD
@@ -202,9 +256,19 @@ class RosBackend(Node):
             if arm.source == "estimated":
                 # the external wrench ON the arm, ee axes, about the ee origin; the tool's
                 # weight is the URDF's business (and what is left of it, the tare's)
-                pe, qe = self._ee_pose(arm)
-                pe, qe = arm.base_in_shelf.apply(pe, qe)
+                pb, qb = self._ee_pose(arm)
+                pe, qe = arm.base_in_shelf.apply(pb, qb)
                 f_on_tool = qe.apply([w.wrench.force.x, w.wrench.force.y, w.wrench.force.z])
+                if arm.baseline is not None:
+                    arm.ticks += 1
+                    b = arm.baseline.force(pb)
+                    if b is None:
+                        arm.misses += 1
+                        if arm.misses == 1:
+                            self.get_logger().warn(f"{arm.name}: flange off the wrench baseline "
+                                                   f"(> {1000 * _Baseline.RADIUS:.0f} mm): not corrected there")
+                    else:
+                        f_on_tool = f_on_tool - arm.base_in_shelf.R.apply(b - arm.b0)
                 m_on_tool = qe.apply([w.wrench.torque.x, w.wrench.torque.y, w.wrench.torque.z])
                 origin = pe
             else:
@@ -219,6 +283,10 @@ class RosBackend(Node):
         return out
 
     def close(self):
+        for arm in self.arms.values():
+            if arm.baseline is not None and arm.ticks:
+                print(f"  wrench baseline {arm.name}: corrected {100 * (1 - arm.misses / arm.ticks):.0f}% "
+                      f"of {arm.ticks} readings")
         self._exec.shutdown()
         self.destroy_node()
         rclpy.shutdown()

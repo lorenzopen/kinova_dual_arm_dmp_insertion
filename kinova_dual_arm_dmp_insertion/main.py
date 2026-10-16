@@ -176,7 +176,8 @@ def cmd_insert(a, cfg):
     path = os.path.join(cfg["log_dir"], time.strftime(f"{r.world}_{a.arm}_%Y%m%d_%H%M%S.csv"))
     log = Log(path)
     b = RosBackend(cfg)
-    ins = slowed(Insertion(r, b, log=log, f_abort=cfg["f_abort"], track_abort=cfg["track_abort"]), a.slow)
+    ins = slowed(Insertion(r, b, log=log, f_abort=cfg["f_abort"], track_abort=cfg["track_abort"],
+                                jam_scale=cfg.get("jam_scale", 1.0)), a.slow)
     try:
         ins.run()
     except (Abort, KeyboardInterrupt) as e:

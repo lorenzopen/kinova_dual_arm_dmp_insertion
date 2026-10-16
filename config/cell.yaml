@@ -27,7 +27,14 @@ log_dir: logs
 max_reach: 0.902          # [m] Kinova Gen3 7-DoF reach, for `check` only
 f_abort: 60.0             # [N] per hand: stop streaming above this (robot-only safety)
 track_abort: 0.040        # [m] stop if a flange is this far from its target beyond F / KP
+jam_scale: 1.8            # x the jam sentry's side-force limit (1.0 = as trained). Lorenzo,
+                          # 2026-10-16: stiffer springs, the piece must push its neighbours
 allow_hand_wrench: false  # hwd routes chase wrench MOMENTS: enable only once they are verified
+# empty-handed `wrench_log` CSV along the route (follow_two_arms --gap 0.10, no piece):
+# each hand's force is corrected by it at the nearest flange position (ros_backend.py).
+# null = no correction. 2026-10-16: the estimate is off up to 8-9 N per arm, repeatably.
+wrench_baseline: logs/wrench_20261016_134246_Z_senza_contatto.csv   # Z F75_Zt1_s9012 (gap 0.10, cart_k 1000; sinistro sotto z 0.275 tolto: toccava la T)
+# T F75_Tt1_s9007: logs/wrench_20261016_112659.csv
 
 stiffness:                # what the routes were trained against (lib/wrist.py)
   trans: 1500.0           # [N/m]
@@ -37,11 +44,11 @@ stiffness:                # what the routes were trained against (lib/wrist.py)
 # THE REAL TOOL (Lorenzo, 2026-10-12): two printed plastic plates, a central
 # spring, a sponge face; triangle side 70 mm. CALIBRATE: measure and write here.
 tool:
-  # Lorenzo, 2026-10-14: each tool sticks out 60 mm from its flange (the tip = the sponge
+  # Lorenzo, 2026-10-16: each tool sticks out 70 mm from its flange (the tip = the sponge
   # face), a few tens of grams (no URDF mass needed: gen3_bare.urdf + the tare). Sponge
   # 30-35 mm, the central spring stops it before it is fully pressed. Only the sum
   # pad_x + pad_r places the face; the squeeze presses into the sponge from there.
-  pad_x: 0.030            # [m] tool origin (flange) to the sponge's back
+  pad_x: 0.040            # [m] tool origin (flange) to the sponge's back
   pad_r: 0.030            # [m] sponge thickness
   r_tri: 0.0404           # [m] contact circle: 70 mm triangle side / sqrt(3) (the sim had 30 mm)
 
