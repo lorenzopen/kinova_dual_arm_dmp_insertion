@@ -97,9 +97,11 @@ class GraspSOCP:
         self.S = np.diag([self.std_f] * 3 + [self.std_tau] * 3 +
                          [self.std_f] * 3 + [self.std_tau] * 3)
         self._cache = {}                 # the GMR query is expensive
+        self._programs = {}              # the compiled program, per set of active pads
+        self._installed = set(cp.installed_solvers())   # it imports every solver: once
 
     def _prior_scaled(self, orientation):
-        """(mean, Q) in the DIMENSIONLESS deviation space.
+        """(mean, L) in the DIMENSIONLESS deviation space, with Q_n = L L^T.
 
         `W_norm = S^-1 W`. The quadratic form is worth the same number
         (`d' Q d = d_n' Q_n d_n` with `Q_n = S Q S`), but `d_n` is O(1), so the
@@ -115,12 +117,13 @@ class GraspSOCP:
             mean, _cov, Q = self.prior.query(orientation)
             Q_n = 0.5 * (self.S @ Q @ self.S + (self.S @ Q @ self.S).T)
             # project onto the PSD cone: the double transform can leave
-            # minutely negative eigenvalues, and `quad_form` refuses them
+            # minutely negative eigenvalues, and the square root refuses them
             w, V = np.linalg.eigh(Q_n)
-            Q_n = (V * np.clip(w, 1e-9, None)) @ V.T
+            w = np.clip(w, 1e-9, None)
+            L_n = V * np.sqrt(w)                 # Q_n = L_n L_n^T
             if self.prior_mode == "identity":
-                Q_n = np.eye(12) * (float(np.trace(Q_n)) / 12.0)
-            self._cache[key] = (np.linalg.solve(self.S, mean), Q_n)
+                L_n = np.eye(12) * np.sqrt(float(np.sum(w)) / 12.0)
+            self._cache[key] = (np.linalg.solve(self.S, mean), L_n)
         return self._cache[key]
 
     def solve(self, posL, posR, baseL, baseR, nrmL, nrmR,
@@ -134,8 +137,8 @@ class GraspSOCP:
         centre and the CoM three centimetres away it would be solving the
         equilibrium of an object that does not exist.
         """
-        aL = [True] * 3 if active_L is None else [bool(x) for x in active_L]
-        aR = [True] * 3 if active_R is None else [bool(x) for x in active_R]
+        aL = tuple([True] * 3 if active_L is None else [bool(x) for x in active_L])
+        aR = tuple([True] * 3 if active_R is None else [bool(x) for x in active_R])
         if not any(aL) or not any(aR):
             return _empty("not a bimanual grasp: one hand is not touching")
 
@@ -144,20 +147,8 @@ class GraspSOCP:
         fmin = min(self.f_min if f_min is None else float(f_min),
                    0.9 * self.f_pad_max)
 
-        f_L = [cp.Variable(3, name=f"fL{i}") for i in range(3)]
-        f_R = [cp.Variable(3, name=f"fR{i}") for i in range(3)]
-        con = []
-        for hand, forces, normals, active in ((0, f_L, nrmL, aL),
-                                              (1, f_R, nrmR, aR)):
-            for i in range(3):
-                if active[i]:
-                    con += cone(forces[i], np.asarray(normals[i], float),
-                                self.mu, f_min=fmin, r_s=self.r_s)
-                    con += [cp.norm(forces[i], 2) <= self.f_pad_max]
-                else:
-                    con += [forces[i] == 0]      # the pad exists, carries nothing
-
-        # --- equilibrium, with a measured slack ------------------------------
+        # --- this call's numbers into the compiled program --------------------
+        P = self._program(aL, aR)
         g = np.array([0.0, 0.0, -9.81])
         if w_des is None:
             F_des, T_des = -float(m_hat) * g, np.zeros(3)
@@ -165,40 +156,36 @@ class GraspSOCP:
             w_des = np.asarray(w_des, float)
             F_des, T_des = w_des[:3], w_des[3:6]
         p_com = np.asarray(p_com, float)
-        sum_f = sum(f_L) + sum(f_R)
-        sum_t = (sum([_skew(np.asarray(posL[i], float) - p_com) @ f_L[i] for i in range(3)])
-                 + sum([_skew(np.asarray(posR[i], float) - p_com) @ f_R[i] for i in range(3)]))
-        sF, sT = cp.Variable(3, name="slack_F"), cp.Variable(3, name="slack_T")
-        con += [sum_f == F_des + sF, sum_t == T_des + sT]
-
-        # --- cost ------------------------------------------------------------
         f_ref = max(float(m_hat) * 9.81, 1e-6)
         t_ref = f_ref * self.r_char
-        cost = self.w_force * sum([cp.sum_squares(f) for f in f_L + f_R]) / f_ref ** 2
-        cost += self.w_slack * (cp.sum_squares(sF) / f_ref ** 2 +
-                                cp.sum_squares(sT) / t_ref ** 2)
+        P["fmin"].value = fmin
+        P["F_des"].value, P["T_des"].value = F_des, T_des
+        P["kf"].value, P["kt"].value = 1.0 / f_ref ** 2, 1.0 / t_ref ** 2
+        for hand, (pads, normals) in enumerate(((posL, nrmL), (posR, nrmR))):
+            for i in range(3):
+                n = np.asarray(normals[i], float)
+                P["n"][hand][i].value = n
+                P["proj"][hand][i].value = np.eye(3) - np.outer(n, n)
+                P["lever"][hand][i].value = _skew(np.asarray(pads[i], float) - p_com)
 
-        mean_n, Q_n = self._prior_scaled(orientation)
-        if Q_n is not None:
+        mean_n, L_n = self._prior_scaled(orientation)
+        if "A" in P:
+            # the two wrist wrenches, grasp axes, scaled: W = M f (f = the 18 pad
+            # forces, left pads then right), then folded with L so the cost is |A f - b|^2
             Rb = np.asarray(orientation, float)
-            W = []
-            for pads, forces, base in ((posL, f_L, baseL), (posR, f_R, baseR)):
-                Fw = sum(forces)
-                Tw = sum([_skew(np.asarray(pads[i], float)
-                                - np.asarray(base, float)) @ forces[i]
-                          for i in range(3)])
-                W += [Rb.T @ Fw / self.std_f, Rb.T @ Tw / self.std_tau]
-            dW = cp.hstack(W) - mean_n
-            cost += self.w_prior * 0.5 * cp.quad_form(dW, cp.psd_wrap(Q_n))
+            M = np.zeros((12, 18))
+            for hand, (pads, base) in enumerate(((posL, baseL), (posR, baseR))):
+                for i in range(3):
+                    cols = slice(9 * hand + 3 * i, 9 * hand + 3 * i + 3)
+                    M[6 * hand:6 * hand + 3, cols] = Rb.T / self.std_f
+                    M[6 * hand + 3:6 * hand + 6, cols] = Rb.T @ _skew(np.asarray(pads[i], float)
+                                                                      - np.asarray(base, float)) / self.std_tau
+            P["A"].value, P["b"].value = L_n.T @ M, L_n.T @ mean_n
 
-        prob = cp.Problem(cp.Minimize(cost), con)
-        if not prob.is_dcp():
-            return _empty("problem is not DCP")
-
-        installed = set(cp.installed_solvers())
+        prob, f_L, f_R, sF, sT = P["prob"], P["f_L"], P["f_R"], P["sF"], P["sT"]
         errors = []
         for s in self.solver_order:
-            if s not in installed:
+            if s not in self._installed:
                 continue
             try:
                 kw = {"solver": s}
@@ -218,6 +205,60 @@ class GraspSOCP:
                 errors.append(f"{s}: inaccurate, residuals "
                               f"{r['residual_force']:.1f} N / {r['residual_torque']:.2f} Nm")
         return _empty("no solver succeeded: " + "; ".join(errors))
+
+    def _program(self, aL, aR):
+        """The program, BUILT ONCE per set of active pads. Every number that changes
+        from call to call is a cp.Parameter, so cvxpy compiles it the first time and
+        afterwards only refills its matrices (DPP). Rebuilt on every call it cost
+        ~30 ms on a desktop and ~140 ms on the robot PC, nearly all cvxpy's compiler:
+        the 100 Hz stream fell to ~7 Hz while carrying (runs of 2026-10-16)."""
+        key = (aL, aR)
+        if key in self._programs:
+            return self._programs[key]
+        P = dict(fmin=cp.Parameter(nonneg=True), F_des=cp.Parameter(3), T_des=cp.Parameter(3),
+                 kf=cp.Parameter(nonneg=True), kt=cp.Parameter(nonneg=True),
+                 n=[[cp.Parameter(3) for _ in range(3)] for _ in range(2)],
+                 proj=[[cp.Parameter((3, 3)) for _ in range(3)] for _ in range(2)],
+                 lever=[[cp.Parameter((3, 3)) for _ in range(3)] for _ in range(2)])
+        f_L = [cp.Variable(3, name=f"fL{i}") for i in range(3)]
+        f_R = [cp.Variable(3, name=f"fR{i}") for i in range(3)]
+        con = []
+        for hand, forces, active in ((0, f_L, aL), (1, f_R, aR)):
+            for i in range(3):
+                if active[i]:
+                    # `cone` above, with I - n n^T as one parameter: n (n . f) would be
+                    # a parameter times a parameter, which DPP does not allow
+                    fn = P["n"][hand][i] @ forces[i]          # negative in compression
+                    con += [fn <= -P["fmin"],
+                            cp.norm(P["proj"][hand][i] @ forces[i], 2) <= -(1.0 - self.r_s) * self.mu * fn,
+                            cp.norm(forces[i], 2) <= self.f_pad_max]
+                else:
+                    con += [forces[i] == 0]      # the pad exists, carries nothing
+
+        # --- equilibrium, with a measured slack ------------------------------
+        sum_f = sum(f_L) + sum(f_R)
+        sum_t = (sum([P["lever"][0][i] @ f_L[i] for i in range(3)])
+                 + sum([P["lever"][1][i] @ f_R[i] for i in range(3)]))
+        sF, sT = cp.Variable(3, name="slack_F"), cp.Variable(3, name="slack_T")
+        con += [sum_f == P["F_des"] + sF, sum_t == P["T_des"] + sT]
+
+        # --- cost ------------------------------------------------------------
+        cost = self.w_force * P["kf"] * sum([cp.sum_squares(f) for f in f_L + f_R])
+        cost += self.w_slack * (P["kf"] * cp.sum_squares(sF) + P["kt"] * cp.sum_squares(sT))
+
+        if self.prior is not None and self.prior_mode != "none":
+            # 0.5 dW^T Q dW with dW = M f - mean and Q = L L^T is 0.5 |A f - b|^2,
+            # A = L^T M, b = L^T mean (filled in `solve`): quad_form with a parameter
+            # matrix is not DPP, one parameter matrix times the variables is
+            P["A"], P["b"] = cp.Parameter((12, 18)), cp.Parameter(12)
+            cost += self.w_prior * 0.5 * cp.sum_squares(P["A"] @ cp.hstack(f_L + f_R) - P["b"])
+
+        prob = cp.Problem(cp.Minimize(cost), con)
+        if not prob.is_dcp(dpp=True):
+            raise RuntimeError("the SOCP is not DPP: cvxpy would recompile it on every call")
+        P.update(prob=prob, f_L=f_L, f_R=f_R, sF=sF, sT=sT)
+        self._programs[key] = P
+        return P
 
     def _pack(self, prob, solver, f_L, f_R, nrmL, nrmR, sF, sT, aL, aR):
         FL = [np.asarray(f.value, float) for f in f_L]

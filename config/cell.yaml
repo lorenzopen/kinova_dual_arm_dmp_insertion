@@ -41,16 +41,20 @@ stiffness:                # what the routes were trained against (lib/wrist.py)
   torsion: 40.0           # [Nm/rad] about the push axis
   tilt: 8.0               # [Nm/rad] the other two (the sim used 3 while approaching)
 
-# THE REAL TOOL (Lorenzo, 2026-10-12): two printed plastic plates, a central
-# spring, a sponge face; triangle side 70 mm. CALIBRATE: measure and write here.
+# THE REAL TOOL (Lorenzo, 2026-10-16): a printed flange, a 50 mm spring, then a tri-pad
+# like PyBullet's: three spheres of radius 15 mm centred on the vertices of a 70 mm
+# triangle. No sponge on the contact face (if any, only around the spring): the three
+# spheres ARE the three contact points of the SOCP. CALIBRATE: measure and write here.
 tool:
-  # Lorenzo, 2026-10-16: each tool sticks out 70 mm from its flange (the tip = the sponge
-  # face), a few tens of grams (no URDF mass needed: gen3_bare.urdf + the tare). Sponge
-  # 30-35 mm, the central spring stops it before it is fully pressed. Only the sum
-  # pad_x + pad_r places the face; the squeeze presses into the sponge from there.
-  pad_x: 0.040            # [m] tool origin (flange) to the sponge's back
-  pad_r: 0.030            # [m] sponge thickness
-  r_tri: 0.0404           # [m] contact circle: 70 mm triangle side / sqrt(3) (the sim had 30 mm)
+  # Lorenzo, 2026-10-16: each tool sticks out 70 mm from its flange (the tip = the front of
+  # the spheres), a few tens of grams (no URDF mass needed: gen3_bare.urdf + the tare).
+  # Only the sum pad_x + pad_r places the contact; the spring is taken as rigid
+  # (geometry.pad_contacts: the tri-pad pose is the flange pose).
+  pad_x: 0.055            # [m] tool origin (flange) to the plane of the sphere centres
+  pad_r: 0.015            # [m] sphere radius
+  r_tri: 0.0404           # [m] sphere centres' circle: 70 mm triangle side / sqrt(3) (the sim had 30 mm).
+                          # TO CHECK: Lorenzo also said "inscribed in a 35 mm circle", which is a
+                          # 60.6 mm side: measure two sphere centres apart (70 -> 0.0404, 60.6 -> 0.035)
 
 left:
   base_frame: base_link
