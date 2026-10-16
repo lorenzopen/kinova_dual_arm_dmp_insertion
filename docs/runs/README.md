@@ -1,15 +1,13 @@
-# Run sul robot vero
+# Run sul robot vero che hanno inserito il pezzo
 
-- `logs/`: tutti i CSV di `logs/` (insert, giri a vuoto, wrench a mani vuote), con `logs/INDEX.md`.
-- `20261016_1211_F75_Tt1_s9007_riuscito/`: la T inserita, con README e cell.yaml usato.
-- `20261016_1333_F75_Zt1_s9012_mezzo_successo/`: la Z entrata, pila mezza caduta.
+- `20261016_1211_F75_Tt1_s9007_riuscito/`: la T inserita, nessun JAM. Con la linea di base del
+  wrench usata (`wrench_20261016_112659.csv`), il giro a vuoto da cui viene e il cell.yaml.
+- `20261016_1333_F75_Zt1_s9012_mezzo_successo/`: la Z entrata, pila mezza caduta. Forze NON
+  corrette (base della T attiva, percorso lontano). Accanto, la base della Z registrata dopo
+  (`wrench_20261016_134246_Z_senza_contatto.csv`) per correggerle offline.
 
-Le bag (`ros2 bag record`, tutti i topic /left /right) sono troppo grandi per git (~900 MB,
-una sola da 170 MB). Dal tuo PC:
+Le bag sono troppo grandi per git. Dal tuo PC:
 
 ```bash
-rsync -av --progress nvidia@<ip-pc-robot>:/home/nvidia/lorenzo/home/lorenzo/bags/ ./bags_robot/
+rsync -av --progress nvidia@<ip-pc-robot>:/home/nvidia/lorenzo/home/lorenzo/bags/sessione_1016_1211 nvidia@<ip-pc-robot>:/home/nvidia/lorenzo/home/lorenzo/bags/sessione_1016_1335 ./bags_robot/
 ```
-
-Per leggerle: `ros2 bag info bags_robot/sessione_1016_1211` (formato mcap), oppure in Python con
-`rosbag2_py` (vedi la verifica della linea di base: FK con `ros_backend._FK` sul joint_states).
